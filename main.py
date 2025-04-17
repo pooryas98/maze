@@ -1,11 +1,15 @@
 import pygame
 import sys
 import argparse
+import pygame
+import sys
+import argparse
 import config # Import the configuration
 
 from src.maze_generator import create_maze
-from ui.maze_display import draw_maze
-from src.solvers.bfs_solver import find_path_bfs # Import the solver
+# from ui.maze_display import draw_maze # Replaced by MazeDisplay class
+from ui.maze_display import MazeDisplay, AI_SOLVE_STEP_EVENT # Import the class and event
+# from src.solvers.bfs_solver import find_path_bfs # Solver logic is now handled via MazeDisplay
 from ui.settings_window import init_settings_window, draw_settings_window, handle_settings_event # Import settings UI functions
 
 # Constants - REMOVED, now in config.py
@@ -96,6 +100,10 @@ def main():
     offset_x = max(0, (screen_width - maze_render_width) // 2)
     offset_y = max(0, (available_height_for_maze - maze_render_height) // 2)
 
+    # --- Initialize Maze Display ---
+    maze_display = MazeDisplay(screen, maze_grid, cell_size, offset_x, offset_y)
+    ai_solve_delay_ms = 100 # Initial AI solve speed (milliseconds per step)
+
     # --- Button Setup ---
     button_font = pygame.font.Font(None, 30) # Fallback Pygame font
 
@@ -141,14 +149,21 @@ def main():
     solve_button_text_rect.center = solve_button_rect.center
     settings_button_text_rect.center = settings_button_rect.center
 
-    # --- Solver State ---
-    solution_path = None
-    visited_cells = None
-    solving_in_progress = False # Optional: could be used for visual feedback
-    solve_requested = False
+    # --- Solver State (Managed by MazeDisplay) ---
+    # solution_path = None # Removed
+    # visited_cells = None # Removed
+    # solving_in_progress = False # Removed (use maze_display.is_solving())
+    # solve_requested = False # Removed
 
     # --- Settings State ---
     settings_window_open = False # Track if the settings window is open
+
+    # --- Callback for Speed Slider ---
+    def handle_speed_change(new_delay):
+        nonlocal ai_solve_delay_ms
+        print(f"Setting AI solve delay to: {new_delay} ms")
+        ai_solve_delay_ms = new_delay
+        maze_display.set_ai_solve_delay(ai_solve_delay_ms)
 
     # --- Game loop ---
     running = True
@@ -164,10 +179,12 @@ def main():
             for event in pygame.event.get():
                  if event.type == pygame.QUIT:
                      running = False
+                     break # Exit inner loop too
                  # Pass event to settings handler
                  action_result = handle_settings_event(event)
                  if action_result:
                      break # Process action immediately
+            if not running: break # Exit outer loop if QUIT received
 
             if action_result:
                 if action_result["action"] == "save":
@@ -178,11 +195,12 @@ def main():
                     # --- Update Maze Config and Regenerate ---
                     maze_width = new_width
                     maze_height = new_height
+                    # Regenerate maze
                     maze_grid = create_maze(maze_width, maze_height)
                     grid_render_height = len(maze_grid)
                     grid_render_width = len(maze_grid[0]) if grid_render_height > 0 else 0
-                    solution_path = None # Clear solution
-                    visited_cells = None
+                    # Clear solver state in display
+                    # maze_display.reset_solve_state() # Done by set_maze
 
                     # --- Recalculate Cell Size and Screen (based on new maze dims) ---
                     if user_cell_size <= 0: # Auto-size
@@ -210,6 +228,15 @@ def main():
                     available_height_for_maze = screen_height - config.CONTROL_PANEL_HEIGHT
                     offset_x = max(0, (screen_width - maze_render_width) // 2)
                     offset_y = max(0, (available_height_for_maze - maze_render_height) // 2)
+
+                    # Update MazeDisplay instance
+                    maze_display.set_maze(maze_grid)
+                    maze_display.cell_size = cell_size
+                    maze_display.offset_x = offset_x
+                    maze_display.offset_y = offset_y
+                    maze_display.screen = screen # Update screen reference if it changed
+
+                    # Reposition buttons
                     total_button_width = regen_button_rect.width + solve_button_rect.width + settings_button_rect.width + config.BUTTON_PADDING * 2
                     start_x = (screen_width - total_button_width) // 2
                     regen_button_rect.left = start_x
@@ -240,22 +267,17 @@ def main():
             pygame.display.flip() # Update display for settings window
             continue # Skip main game loop processing
 
-        # --- Handle Solver Request ---
-        if solve_requested:
-            print("Solving maze...")
-            solving_in_progress = True
-            solution_path, visited_cells = find_path_bfs(maze_grid)
-            solving_in_progress = False
-            solve_requested = False # Reset request flag
-            if solution_path:
-                print(f"Solution found! Path length: {len(solution_path)}")
-            else:
-                print("No solution found.")
+        # --- Handle Solver Request (Removed - Handled by MazeDisplay) ---
+        # if solve_requested: ...
 
         # --- Handle Events ---
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            # Pass timer event to MazeDisplay
+            if event.type == AI_SOLVE_STEP_EVENT:
+                maze_display.handle_event(event)
+
             # Handle window resize events
             if event.type == pygame.VIDEORESIZE:
                 screen_width = event.w
@@ -265,6 +287,12 @@ def main():
                 available_height_for_maze = screen_height - config.CONTROL_PANEL_HEIGHT
                 offset_x = max(0, (screen_width - maze_render_width) // 2)
                 offset_y = max(0, (available_height_for_maze - maze_render_height) // 2)
+
+                # Update MazeDisplay instance
+                maze_display.screen = screen
+                maze_display.offset_x = offset_x
+                maze_display.offset_y = offset_y
+
                 # Reposition all buttons
                 total_button_width = regen_button_rect.width + solve_button_rect.width + settings_button_rect.width + config.BUTTON_PADDING * 2
                 start_x = (screen_width - total_button_width) // 2
@@ -285,38 +313,41 @@ def main():
                 elif event.key == pygame.K_r: # Regenerate
                     print("Regenerating maze (R key)...")
                     maze_grid = create_maze(maze_width, maze_height)
-                    solution_path = None # Clear solution on regenerate
-                    visited_cells = None
+                    maze_display.set_maze(maze_grid) # Update display
+                    # maze_display.reset_solve_state() # Done by set_maze
                 elif event.key == pygame.K_s: # Solve
-                    if not solution_path:
-                         solve_requested = True
+                    print("Starting AI solve (S key)...")
+                    maze_display.start_ai_solve() # Start visualization
                 elif event.key == pygame.K_g: # Settings
                     print("Opening settings...")
                     # Initialize the settings window state before opening
-                    init_settings_window(screen.get_width(), screen.get_height(), maze_width, maze_height)
+                    init_settings_window(screen.get_width(), screen.get_height(),
+                                         maze_width, maze_height,
+                                         ai_solve_delay_ms, handle_speed_change) # Pass delay and callback
                     settings_window_open = True # Open the settings window
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1: # Left mouse click
                     if regen_button_hover:
                         print("Regenerating maze (button click)...")
                         maze_grid = create_maze(maze_width, maze_height)
-                        solution_path = None # Clear solution on regenerate
-                        visited_cells = None
+                        maze_display.set_maze(maze_grid) # Update display
+                        # maze_display.reset_solve_state() # Done by set_maze
                     elif solve_button_hover:
-                         if not solution_path: # Only solve if not already solved
-                            solve_requested = True
+                        print("Starting AI solve (button click)...")
+                        maze_display.start_ai_solve() # Start visualization
                     elif settings_button_hover:
                         print("Opening settings...")
                         # Initialize the settings window state before opening
-                        init_settings_window(screen.get_width(), screen.get_height(), maze_width, maze_height)
+                        init_settings_window(screen.get_width(), screen.get_height(),
+                                             maze_width, maze_height,
+                                             ai_solve_delay_ms, handle_speed_change) # Pass delay and callback
                         settings_window_open = True # Open the settings window
 
         # Draw everything
         screen.fill(config.BACKGROUND_COLOR)
 
-        # Draw the maze itself, passing solver data
-        draw_maze(screen, maze_grid, cell_size, offset_x, offset_y,
-                  solution_path=solution_path, visited_cells=visited_cells)
+        # Draw the maze using the MazeDisplay instance
+        maze_display.draw()
 
         # Draw the control panel background covering the bottom area
         panel_rect = pygame.Rect(0, screen_height - config.CONTROL_PANEL_HEIGHT, screen_width, config.CONTROL_PANEL_HEIGHT)
@@ -346,4 +377,4 @@ def main():
     sys.exit()
 
 if __name__ == "__main__":
-    main() 
+    main()

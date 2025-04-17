@@ -36,5 +36,7 @@ BORDER_COLOR = (80, 80, 90) # Border for the panel
 INPUT_BOX_COLOR = (60, 60, 70) # Input box background
 INPUT_BOX_ACTIVE_COLOR = (70, 70, 85) # Input box background when active
 INPUT_TEXT_COLOR = (220, 220, 220) # Text inside input boxes
+SLIDER_HANDLE_COLOR = (0, 180, 0) # Green handle for slider
+SLIDER_TRACK_COLOR = (80, 80, 90) # Track color for slider
 
-# ... existing code ... 
+# ... existing code ...

@@ -1,23 +1,25 @@
 from collections import deque
 
-def find_path_bfs(grid):
+def solve_bfs_step_by_step(grid):
     """
-    Finds the shortest path from the entrance to the exit of a maze grid using BFS.
+    Performs a step-by-step BFS search on the maze grid, yielding visited nodes.
 
     Args:
         grid (list[list[str]]): The maze grid where '#' is wall, ' ' is path.
                                  Tries to dynamically find entrance/exit on edges.
 
-    Returns:
-        tuple: (path, visited)
-            path (list[tuple[int, int]]): List of (x, y) coordinates for the shortest path,
-                                           or None if no path exists.
-            visited (set[tuple[int, int]]): Set of (x, y) coordinates visited during search.
+    Yields:
+        tuple: (visited_set, current_path_segment, is_done, final_path)
+            visited_set (set[tuple[int, int]]): Set of (x, y) coordinates visited so far.
+            current_path_segment (list[tuple[int, int]]): The path segment being explored.
+            is_done (bool): True if the search is complete (found or failed).
+            final_path (list[tuple[int, int]] or None): The complete path if found, else None.
     """
     height = len(grid)
     width = len(grid[0]) if height > 0 else 0
     if height == 0 or width == 0:
-        return None, set()
+        yield set(), [], True, None # Indicate immediate completion, no path
+        return
 
     # --- Find Entrance and Exit ---
     start_node = None
@@ -61,19 +63,22 @@ def find_path_bfs(grid):
 
     if start_node is None or end_node is None:
         print("Solver Error: Could not determine start or end node.")
-        return None, set()
+        yield set(), [], True, None # Indicate completion, no path
+        return
 
     print(f"Solver: Start={start_node}, End={end_node}")
 
-    # --- BFS Implementation ---
+    # --- BFS Implementation (Step-by-Step) ---
     queue = deque([(start_node, [start_node])]) # Store (node, path_to_node)
     visited = {start_node}
+    yield visited, [start_node], False, None # Initial state
 
     while queue:
-        (current_x, current_y), path = queue.popleft()
+        (current_x, current_y), current_path_segment = queue.popleft()
 
         if (current_x, current_y) == end_node:
-            return path, visited # Found the exit
+            yield visited, current_path_segment, True, current_path_segment # Found the exit
+            return # Stop generation
 
         # Explore neighbors (Up, Down, Left, Right)
         for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0)]:
@@ -84,9 +89,12 @@ def find_path_bfs(grid):
                 # Check if it's a path and not visited
                 if grid[next_y][next_x] == ' ' and (next_x, next_y) not in visited:
                     visited.add((next_x, next_y))
-                    new_path = list(path)
-                    new_path.append((next_x, next_y))
-                    queue.append(((next_x, next_y), new_path))
+                    new_path_segment = list(current_path_segment) # Define inside if
+                    new_path_segment.append((next_x, next_y))     # Indent this
+                    queue.append(((next_x, next_y), new_path_segment)) # Indent this
+                    # Yield state after adding a node to the queue and visited set
+                    yield visited, new_path_segment, False, None       # Indent this
+
 
     print(f"Solver: No path found from {start_node} to {end_node}")
-    return None, visited # No path found 
+    yield visited, [], True, None # Indicate completion, no path found
