@@ -1,8 +1,8 @@
 # Configuration settings for the Maze Generator
 
 # --- Maze Defaults ---
-DEFAULT_WIDTH = 20       # Default width of the maze in cells
-DEFAULT_HEIGHT = 20      # Default height of the maze in cells
+DEFAULT_WIDTH = 50       # Default width of the maze in cells
+DEFAULT_HEIGHT = 50      # Default height of the maze in cells
 # Default cell size in pixels. 0 or less means auto-calculate to fit screen.
 DEFAULT_CELL_SIZE = 0
 
