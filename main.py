@@ -6,6 +6,7 @@ import config # Import the configuration
 from src.maze_generator import create_maze
 from ui.maze_display import draw_maze
 from src.solvers.bfs_solver import find_path_bfs # Import the solver
+from ui.settings_window import init_settings_window, draw_settings_window, handle_settings_event # Import settings UI functions
 
 # Constants - REMOVED, now in config.py
 # DEFAULT_WIDTH = 100
@@ -98,7 +99,7 @@ def main():
     # --- Button Setup ---
     button_font = pygame.font.Font(None, 30) # Fallback Pygame font
 
-    # --- Regenerate Button --- 
+    # --- Regenerate Button ---
     regen_button_text_surface = button_font.render("Regenerate (R)", True, config.BUTTON_TEXT_COLOR)
     regen_button_text_rect = regen_button_text_surface.get_rect()
     regen_button_rect = pygame.Rect(
@@ -108,7 +109,7 @@ def main():
         regen_button_text_rect.height + config.BUTTON_PADDING * 2
     )
 
-    # --- Solve Button --- 
+    # --- Solve Button ---
     solve_button_text_surface = button_font.render("Solve by AI (S)", True, config.BUTTON_TEXT_COLOR)
     solve_button_text_rect = solve_button_text_surface.get_rect()
     solve_button_rect = pygame.Rect(
@@ -118,21 +119,36 @@ def main():
         solve_button_text_rect.height + config.BUTTON_PADDING * 2
     )
 
-    # --- Position Buttons --- 
-    total_button_width = regen_button_rect.width + solve_button_rect.width + config.BUTTON_PADDING # Add padding between buttons
+    # --- Settings Button ---
+    settings_button_text_surface = button_font.render("Settings (G)", True, config.BUTTON_TEXT_COLOR)
+    settings_button_text_rect = settings_button_text_surface.get_rect()
+    settings_button_rect = pygame.Rect(
+        0, # Left (set later)
+        regen_button_rect.top, # Align vertically
+        settings_button_text_rect.width + config.BUTTON_PADDING * 2,
+        settings_button_text_rect.height + config.BUTTON_PADDING * 2
+    )
+
+    # --- Position Buttons ---
+    total_button_width = regen_button_rect.width + solve_button_rect.width + settings_button_rect.width + config.BUTTON_PADDING * 2 # Add padding between buttons
     start_x = (screen_width - total_button_width) // 2
     regen_button_rect.left = start_x
     solve_button_rect.left = regen_button_rect.right + config.BUTTON_PADDING
+    settings_button_rect.left = solve_button_rect.right + config.BUTTON_PADDING
 
     # Center the text within the buttons
     regen_button_text_rect.center = regen_button_rect.center
     solve_button_text_rect.center = solve_button_rect.center
+    settings_button_text_rect.center = settings_button_rect.center
 
-    # --- Solver State --- 
+    # --- Solver State ---
     solution_path = None
     visited_cells = None
     solving_in_progress = False # Optional: could be used for visual feedback
     solve_requested = False
+
+    # --- Settings State ---
+    settings_window_open = False # Track if the settings window is open
 
     # --- Game loop ---
     running = True
@@ -140,6 +156,89 @@ def main():
         mouse_pos = pygame.mouse.get_pos()
         regen_button_hover = regen_button_rect.collidepoint(mouse_pos)
         solve_button_hover = solve_button_rect.collidepoint(mouse_pos)
+        settings_button_hover = settings_button_rect.collidepoint(mouse_pos)
+
+        # --- Handle Settings Window ---
+        if settings_window_open:
+            action_result = None
+            for event in pygame.event.get():
+                 if event.type == pygame.QUIT:
+                     running = False
+                 # Pass event to settings handler
+                 action_result = handle_settings_event(event)
+                 if action_result:
+                     break # Process action immediately
+
+            if action_result:
+                if action_result["action"] == "save":
+                    new_width = action_result["width"]
+                    new_height = action_result["height"]
+                    print(f"Applying new settings: Width={new_width}, Height={new_height}")
+
+                    # --- Update Maze Config and Regenerate ---
+                    maze_width = new_width
+                    maze_height = new_height
+                    maze_grid = create_maze(maze_width, maze_height)
+                    grid_render_height = len(maze_grid)
+                    grid_render_width = len(maze_grid[0]) if grid_render_height > 0 else 0
+                    solution_path = None # Clear solution
+                    visited_cells = None
+
+                    # --- Recalculate Cell Size and Screen (based on new maze dims) ---
+                    if user_cell_size <= 0: # Auto-size
+                        target_w = native_screen_w
+                        target_h = native_screen_h - (0 if args.fullscreen else config.CONTROL_PANEL_HEIGHT)
+                        padding_factor = 1.0 if args.fullscreen else config.AUTO_SIZE_PADDING_FACTOR
+                        max_cell_w = (target_w * padding_factor) // grid_render_width
+                        max_cell_h = (target_h * padding_factor) // grid_render_height
+                        cell_size = max(config.MIN_CELL_SIZE, int(min(max_cell_w, max_cell_h)))
+                        print(f"Auto-recalculated cell size: {cell_size}px")
+                    else:
+                         cell_size = max(config.MIN_CELL_SIZE, user_cell_size)
+
+                    maze_render_width = grid_render_width * cell_size
+                    maze_render_height = grid_render_height * cell_size
+
+                    if not args.fullscreen:
+                        # Update window size if not fullscreen
+                        screen_width = maze_render_width
+                        screen_height = maze_render_height + config.CONTROL_PANEL_HEIGHT
+                        screen = pygame.display.set_mode((screen_width, screen_height), screen_flags)
+                    # else: Fullscreen stays the same size
+
+                    # --- Recalculate Offsets and Buttons ---
+                    available_height_for_maze = screen_height - config.CONTROL_PANEL_HEIGHT
+                    offset_x = max(0, (screen_width - maze_render_width) // 2)
+                    offset_y = max(0, (available_height_for_maze - maze_render_height) // 2)
+                    total_button_width = regen_button_rect.width + solve_button_rect.width + settings_button_rect.width + config.BUTTON_PADDING * 2
+                    start_x = (screen_width - total_button_width) // 2
+                    regen_button_rect.left = start_x
+                    regen_button_rect.top = screen_height - config.CONTROL_PANEL_HEIGHT + (config.CONTROL_PANEL_HEIGHT - regen_button_text_rect.height - config.BUTTON_PADDING * 2) // 2
+                    solve_button_rect.left = regen_button_rect.right + config.BUTTON_PADDING
+                    solve_button_rect.top = regen_button_rect.top
+                    settings_button_rect.left = solve_button_rect.right + config.BUTTON_PADDING
+                    settings_button_rect.top = regen_button_rect.top
+                    regen_button_text_rect.center = regen_button_rect.center
+                    solve_button_text_rect.center = solve_button_rect.center
+                    settings_button_text_rect.center = settings_button_rect.center
+
+                    pygame.display.set_caption(f"Maze ({maze_width}x{maze_height}) - Cell Size: {cell_size}px")
+
+                    settings_window_open = False # Close window
+
+                elif action_result["action"] == "cancel":
+                    settings_window_open = False # Close window
+
+            # Draw the semi-transparent overlay first
+            overlay = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 150)) # Darker overlay
+            screen.blit(overlay, (0, 0))
+
+            # Draw the actual settings window on top
+            draw_settings_window(screen)
+
+            pygame.display.flip() # Update display for settings window
+            continue # Skip main game loop processing
 
         # --- Handle Solver Request ---
         if solve_requested:
@@ -166,13 +265,19 @@ def main():
                 available_height_for_maze = screen_height - config.CONTROL_PANEL_HEIGHT
                 offset_x = max(0, (screen_width - maze_render_width) // 2)
                 offset_y = max(0, (available_height_for_maze - maze_render_height) // 2)
+                # Reposition all buttons
+                total_button_width = regen_button_rect.width + solve_button_rect.width + settings_button_rect.width + config.BUTTON_PADDING * 2
                 start_x = (screen_width - total_button_width) // 2
                 regen_button_rect.left = start_x
                 regen_button_rect.top = screen_height - config.CONTROL_PANEL_HEIGHT + (config.CONTROL_PANEL_HEIGHT - regen_button_text_rect.height - config.BUTTON_PADDING * 2) // 2
                 solve_button_rect.left = regen_button_rect.right + config.BUTTON_PADDING
                 solve_button_rect.top = regen_button_rect.top
+                settings_button_rect.left = solve_button_rect.right + config.BUTTON_PADDING
+                settings_button_rect.top = regen_button_rect.top
+                # Recenter text
                 regen_button_text_rect.center = regen_button_rect.center
                 solve_button_text_rect.center = solve_button_rect.center
+                settings_button_text_rect.center = settings_button_rect.center
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -185,6 +290,11 @@ def main():
                 elif event.key == pygame.K_s: # Solve
                     if not solution_path:
                          solve_requested = True
+                elif event.key == pygame.K_g: # Settings
+                    print("Opening settings...")
+                    # Initialize the settings window state before opening
+                    init_settings_window(screen.get_width(), screen.get_height(), maze_width, maze_height)
+                    settings_window_open = True # Open the settings window
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1: # Left mouse click
                     if regen_button_hover:
@@ -195,6 +305,11 @@ def main():
                     elif solve_button_hover:
                          if not solution_path: # Only solve if not already solved
                             solve_requested = True
+                    elif settings_button_hover:
+                        print("Opening settings...")
+                        # Initialize the settings window state before opening
+                        init_settings_window(screen.get_width(), screen.get_height(), maze_width, maze_height)
+                        settings_window_open = True # Open the settings window
 
         # Draw everything
         screen.fill(config.BACKGROUND_COLOR)
@@ -216,6 +331,11 @@ def main():
         solve_button_color = config.BUTTON_HOVER_COLOR if solve_button_hover else config.BUTTON_COLOR
         pygame.draw.rect(screen, solve_button_color, solve_button_rect, border_radius=5)
         screen.blit(solve_button_text_surface, solve_button_text_rect)
+
+        # Draw the Settings button
+        settings_button_color = config.BUTTON_HOVER_COLOR if settings_button_hover else config.BUTTON_COLOR
+        pygame.draw.rect(screen, settings_button_color, settings_button_rect, border_radius=5)
+        screen.blit(settings_button_text_surface, settings_button_text_rect)
 
         # Update the display
         pygame.display.flip()
