@@ -107,47 +107,56 @@ def main():
     # --- Button Setup ---
     button_font = pygame.font.Font(None, 30) # Fallback Pygame font
 
-    # --- Regenerate Button ---
-    regen_button_text_surface = button_font.render("Regenerate (R)", True, config.BUTTON_TEXT_COLOR)
-    regen_button_text_rect = regen_button_text_surface.get_rect()
-    regen_button_rect = pygame.Rect(
-        0, # Left (set later)
-        screen_height - config.CONTROL_PANEL_HEIGHT + (config.CONTROL_PANEL_HEIGHT - regen_button_text_rect.height - config.BUTTON_PADDING * 2) // 2,
-        regen_button_text_rect.width + config.BUTTON_PADDING * 2,
-        regen_button_text_rect.height + config.BUTTON_PADDING * 2
-    )
+    # --- Button Definitions ---
+    button_defs = [
+        {"text": "Regenerate (R)", "key": pygame.K_r},
+        {"text": "Solve (S)", "key": pygame.K_s},
+        {"text": "Settings (G)", "key": pygame.K_g},
+        {"text": "Exit (ESC)", "key": pygame.K_ESCAPE}
+    ]
 
-    # --- Solve Button ---
-    solve_button_text_surface = button_font.render("Solve by AI (S)", True, config.BUTTON_TEXT_COLOR)
-    solve_button_text_rect = solve_button_text_surface.get_rect()
-    solve_button_rect = pygame.Rect(
-        0, # Left (set later)
-        regen_button_rect.top, # Align vertically with regenerate button
-        solve_button_text_rect.width + config.BUTTON_PADDING * 2,
-        solve_button_text_rect.height + config.BUTTON_PADDING * 2
-    )
+    # Calculate max button width needed
+    max_text_width = 0
+    for btn in button_defs:
+        text_surface = button_font.render(btn["text"], True, config.BUTTON_TEXT_COLOR)
+        max_text_width = max(max_text_width, text_surface.get_rect().width)
+    
+    # Standard button dimensions
+    button_width = max_text_width + config.BUTTON_PADDING * 2
+    button_height = button_font.get_height() + config.BUTTON_PADDING * 2
+    button_padding = config.BUTTON_PADDING * 2
 
-    # --- Settings Button ---
-    settings_button_text_surface = button_font.render("Settings (G)", True, config.BUTTON_TEXT_COLOR)
-    settings_button_text_rect = settings_button_text_surface.get_rect()
-    settings_button_rect = pygame.Rect(
-        0, # Left (set later)
-        regen_button_rect.top, # Align vertically
-        settings_button_text_rect.width + config.BUTTON_PADDING * 2,
-        settings_button_text_rect.height + config.BUTTON_PADDING * 2
-    )
+    # Calculate total width needed for all buttons
+    total_buttons_width = (button_width * len(button_defs)) + (button_padding * (len(button_defs) - 1))
+    
+    # Calculate starting position to center buttons
+    start_x = (screen_width - total_buttons_width) // 2
+    button_y = screen_height - config.CONTROL_PANEL_HEIGHT + (config.CONTROL_PANEL_HEIGHT - button_height) // 2
 
-    # --- Position Buttons ---
-    total_button_width = regen_button_rect.width + solve_button_rect.width + settings_button_rect.width + config.BUTTON_PADDING * 2 # Add padding between buttons
-    start_x = (screen_width - total_button_width) // 2
-    regen_button_rect.left = start_x
-    solve_button_rect.left = regen_button_rect.right + config.BUTTON_PADDING
-    settings_button_rect.left = solve_button_rect.right + config.BUTTON_PADDING
+    # Create button rects and text surfaces
+    buttons = []
+    for i, btn in enumerate(button_defs):
+        btn_rect = pygame.Rect(
+            start_x + i * (button_width + button_padding),
+            button_y,
+            button_width,
+            button_height
+        )
+        text_surface = button_font.render(btn["text"], True, config.BUTTON_TEXT_COLOR)
+        text_rect = text_surface.get_rect(center=btn_rect.center)
+        
+        buttons.append({
+            "rect": btn_rect,
+            "text_surface": text_surface,
+            "text_rect": text_rect,
+            "key": btn["key"]
+        })
 
-    # Center the text within the buttons
-    regen_button_text_rect.center = regen_button_rect.center
-    solve_button_text_rect.center = solve_button_rect.center
-    settings_button_text_rect.center = settings_button_rect.center
+    # Assign to specific variables for easier reference
+    regen_button = buttons[0]
+    solve_button = buttons[1]
+    settings_button = buttons[2]
+    exit_button = buttons[3]
 
     # --- Solver State (Managed by MazeDisplay) ---
     # solution_path = None # Removed
@@ -169,9 +178,11 @@ def main():
     running = True
     while running:
         mouse_pos = pygame.mouse.get_pos()
-        regen_button_hover = regen_button_rect.collidepoint(mouse_pos)
-        solve_button_hover = solve_button_rect.collidepoint(mouse_pos)
-        settings_button_hover = settings_button_rect.collidepoint(mouse_pos)
+        # Check button hovers
+        regen_button_hover = regen_button["rect"].collidepoint(mouse_pos)
+        solve_button_hover = solve_button["rect"].collidepoint(mouse_pos)
+        settings_button_hover = settings_button["rect"].collidepoint(mouse_pos)
+        exit_button_hover = exit_button["rect"].collidepoint(mouse_pos)
 
         # --- Handle Settings Window ---
         if settings_window_open:
@@ -236,18 +247,15 @@ def main():
                     maze_display.offset_y = offset_y
                     maze_display.screen = screen # Update screen reference if it changed
 
-                    # Reposition buttons
-                    total_button_width = regen_button_rect.width + solve_button_rect.width + settings_button_rect.width + config.BUTTON_PADDING * 2
-                    start_x = (screen_width - total_button_width) // 2
-                    regen_button_rect.left = start_x
-                    regen_button_rect.top = screen_height - config.CONTROL_PANEL_HEIGHT + (config.CONTROL_PANEL_HEIGHT - regen_button_text_rect.height - config.BUTTON_PADDING * 2) // 2
-                    solve_button_rect.left = regen_button_rect.right + config.BUTTON_PADDING
-                    solve_button_rect.top = regen_button_rect.top
-                    settings_button_rect.left = solve_button_rect.right + config.BUTTON_PADDING
-                    settings_button_rect.top = regen_button_rect.top
-                    regen_button_text_rect.center = regen_button_rect.center
-                    solve_button_text_rect.center = solve_button_rect.center
-                    settings_button_text_rect.center = settings_button_rect.center
+                    # Reposition buttons on resize
+                    total_buttons_width = (button_width * len(button_defs)) + (button_padding * (len(button_defs) - 1))
+                    start_x = (screen_width - total_buttons_width) // 2
+                    button_y = screen_height - config.CONTROL_PANEL_HEIGHT + (config.CONTROL_PANEL_HEIGHT - button_height) // 2
+                    
+                    for i, btn in enumerate(buttons):
+                        btn["rect"].left = start_x + i * (button_width + button_padding)
+                        btn["rect"].top = button_y
+                        btn["text_rect"].center = btn["rect"].center
 
                     pygame.display.set_caption(f"Maze ({maze_width}x{maze_height}) - Cell Size: {cell_size}px")
 
@@ -293,19 +301,15 @@ def main():
                 maze_display.offset_x = offset_x
                 maze_display.offset_y = offset_y
 
-                # Reposition all buttons
-                total_button_width = regen_button_rect.width + solve_button_rect.width + settings_button_rect.width + config.BUTTON_PADDING * 2
-                start_x = (screen_width - total_button_width) // 2
-                regen_button_rect.left = start_x
-                regen_button_rect.top = screen_height - config.CONTROL_PANEL_HEIGHT + (config.CONTROL_PANEL_HEIGHT - regen_button_text_rect.height - config.BUTTON_PADDING * 2) // 2
-                solve_button_rect.left = regen_button_rect.right + config.BUTTON_PADDING
-                solve_button_rect.top = regen_button_rect.top
-                settings_button_rect.left = solve_button_rect.right + config.BUTTON_PADDING
-                settings_button_rect.top = regen_button_rect.top
-                # Recenter text
-                regen_button_text_rect.center = regen_button_rect.center
-                solve_button_text_rect.center = solve_button_rect.center
-                settings_button_text_rect.center = settings_button_rect.center
+                # Reposition all buttons on resize
+                total_buttons_width = (button_width * len(button_defs)) + (button_padding * (len(button_defs) - 1))
+                start_x = (screen_width - total_buttons_width) // 2
+                button_y = screen_height - config.CONTROL_PANEL_HEIGHT + (config.CONTROL_PANEL_HEIGHT - button_height) // 2
+                
+                for i, btn in enumerate(buttons):
+                    btn["rect"].left = start_x + i * (button_width + button_padding)
+                    btn["rect"].top = button_y
+                    btn["text_rect"].center = btn["rect"].center
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -342,6 +346,9 @@ def main():
                                              maze_width, maze_height,
                                              ai_solve_delay_ms, handle_speed_change) # Pass delay and callback
                         settings_window_open = True # Open the settings window
+                    elif exit_button_hover:
+                        print("Exiting game...")
+                        running = False
 
         # Draw everything
         screen.fill(config.BACKGROUND_COLOR)
@@ -353,20 +360,11 @@ def main():
         panel_rect = pygame.Rect(0, screen_height - config.CONTROL_PANEL_HEIGHT, screen_width, config.CONTROL_PANEL_HEIGHT)
         pygame.draw.rect(screen, config.BACKGROUND_COLOR, panel_rect) # Draw panel background
 
-        # Draw the Regenerate button
-        regen_button_color = config.BUTTON_HOVER_COLOR if regen_button_hover else config.BUTTON_COLOR
-        pygame.draw.rect(screen, regen_button_color, regen_button_rect, border_radius=5)
-        screen.blit(regen_button_text_surface, regen_button_text_rect)
-
-        # Draw the Solve button
-        solve_button_color = config.BUTTON_HOVER_COLOR if solve_button_hover else config.BUTTON_COLOR
-        pygame.draw.rect(screen, solve_button_color, solve_button_rect, border_radius=5)
-        screen.blit(solve_button_text_surface, solve_button_text_rect)
-
-        # Draw the Settings button
-        settings_button_color = config.BUTTON_HOVER_COLOR if settings_button_hover else config.BUTTON_COLOR
-        pygame.draw.rect(screen, settings_button_color, settings_button_rect, border_radius=5)
-        screen.blit(settings_button_text_surface, settings_button_text_rect)
+        # Draw all buttons
+        for btn, hover in zip(buttons, [regen_button_hover, solve_button_hover, settings_button_hover, exit_button_hover]):
+            btn_color = config.BUTTON_HOVER_COLOR if hover else config.BUTTON_COLOR
+            pygame.draw.rect(screen, btn_color, btn["rect"], border_radius=5)
+            screen.blit(btn["text_surface"], btn["text_rect"])
 
         # Update the display
         pygame.display.flip()

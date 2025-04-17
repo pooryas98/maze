@@ -126,7 +126,7 @@ font = None
 # Define speed range for the slider (visual 0-100) and mapping to delay (ms)
 SLIDER_MIN_VAL = 0
 SLIDER_MAX_VAL = 100
-MIN_DELAY_MS = 10  # Fastest speed
+MIN_DELAY_MS = 1  # Fastest speed (increased)
 MAX_DELAY_MS = 500 # Slowest speed
 
 def map_slider_to_delay(slider_value):
@@ -222,8 +222,8 @@ def draw_settings_window(screen):
 
     screen.blit(width_label_surface, (win_x + padding, width_input.rect.y + 5))
     screen.blit(height_label_surface, (win_x + padding, height_input.rect.y + 5))
-    # Position speed label above the slider
-    screen.blit(speed_label_surface, (win_x + padding, speed_slider.rect.y + (speed_slider.rect.height - speed_label_surface.get_height()) // 2))
+    # Position speed label above the slider (moved up by font height)
+    screen.blit(speed_label_surface, (win_x + padding, speed_slider.rect.y - speed_label_surface.get_height()))
 
     # Draw Input Boxes
     width_input.draw(screen)
