@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Maze App</string>
+    <string name="hello_message">Hello from Maze App!</string>
+</resources>
