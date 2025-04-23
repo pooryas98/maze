@@ -124,4 +124,21 @@ dmypy.json
 .pytype/
 
 # Cython cache files
-cython_debug/ 
+cython_debug/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and temporary files
+*.log
+*.tmp
+temp/
+tmp/
