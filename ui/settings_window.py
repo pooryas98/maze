@@ -1,82 +1,132 @@
+# ui/settings_window.py
+
 import pygame
-import config # Access config variables like colors, padding
-import math # For mapping slider value
+import config
+import math
 
-# Basic Input Box Class (can be expanded)
+# --- Helper UI Element Classes ---
+
 class InputBox:
-    def __init__(self, x, y, w, h, initial_text='', font=None):
+    """A simple text input box for numeric input."""
+    def __init__(self, x, y, w, h, initial_text='', font=None, max_len=4, allow_empty=False):
         self.rect = pygame.Rect(x, y, w, h)
-        self.color = config.INPUT_BOX_COLOR
-        self.text = initial_text
         self.font = font if font else pygame.font.Font(None, 32)
-        self.txt_surface = self.font.render(initial_text, True, config.INPUT_TEXT_COLOR)
+        self.color = config.SETTINGS_INPUT_BOX_COLOR
+        self.active_color = config.SETTINGS_INPUT_BOX_ACTIVE_COLOR
+        self.inactive_color = config.SETTINGS_INPUT_BOX_COLOR
+        self.invalid_color = config.SETTINGS_INVALID_INPUT_COLOR # Color for text when invalid
+        self.text_color = config.SETTINGS_INPUT_TEXT_COLOR
+        self.text = str(initial_text) # Ensure it's a string
+        self.max_len = max_len
+        self.allow_empty = allow_empty
         self.active = False
-        self.active_color = config.INPUT_BOX_ACTIVE_COLOR
-        self.inactive_color = config.INPUT_BOX_COLOR
+        self.is_valid = True # Track validity state
+        self._update_surface()
 
-    def handle_event(self, event):
+    def _update_surface(self):
+        """Renders the text onto the surface."""
+        display_color = self.text_color if self.is_valid else self.invalid_color
+        self.txt_surface = self.font.render(self.text, True, display_color)
+
+    def set_validity(self, is_valid):
+        """Sets the validity state and triggers a surface update."""
+        if self.is_valid != is_valid:
+            self.is_valid = is_valid
+            self._update_surface()
+
+    def handle_event(self, event, validation_func=None):
+        """Handles user input events. Returns True if Enter is pressed."""
+        made_change = False
+        enter_pressed = False
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.rect.collidepoint(event.pos):
-                self.active = not self.active
+                self.active = True
             else:
                 self.active = False
             self.color = self.active_color if self.active else self.inactive_color
         if event.type == pygame.KEYDOWN:
             if self.active:
-                if event.key == pygame.K_RETURN:
+                if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
                     self.active = False
                     self.color = self.inactive_color
-                    return True
+                    enter_pressed = True # Signal Enter press
+                    # Validate on enter as well
+                    if validation_func:
+                        self.set_validity(validation_func(self.text))
                 elif event.key == pygame.K_BACKSPACE:
                     self.text = self.text[:-1]
-                else:
-                    if event.unicode.isdigit():
-                        self.text += event.unicode
-                self.txt_surface = self.font.render(self.text, True, config.INPUT_TEXT_COLOR)
-        return False
+                    made_change = True
+                elif event.unicode.isdigit() and len(self.text) < self.max_len:
+                    self.text += event.unicode
+                    made_change = True
 
-    def update(self):
-        pass
+                if made_change:
+                    # Validate text after change if a validation function is provided
+                    if validation_func:
+                         self.set_validity(validation_func(self.text))
+                    else:
+                         self.set_validity(True) # Assume valid if no function
+                    self._update_surface()
+
+        return enter_pressed # Return whether Enter was pressed
 
     def draw(self, screen):
+        """Draws the input box and its text."""
         pygame.draw.rect(screen, self.color, self.rect, 0, border_radius=5)
-        screen.blit(self.txt_surface, (self.rect.x+5, self.rect.y+5))
+        # Blit text centered vertically, padded horizontally
+        text_x = self.rect.x + 5
+        text_y = self.rect.y + (self.rect.height - self.txt_surface.get_height()) // 2
+        screen.blit(self.txt_surface, (text_x, text_y))
+
+    def get_value(self):
+        """Returns the integer value of the text, or None if invalid/empty."""
+        try:
+            val = int(self.text)
+            return val
+        except ValueError:
+            return None
 
 
-# Simple Slider Class
 class Slider:
-    def __init__(self, x, y, w, h, min_val, max_val, initial_val, handle_color, track_color):
+    """A horizontal slider control."""
+    def __init__(self, x, y, w, h, min_val, max_val, initial_val):
         self.rect = pygame.Rect(x, y, w, h) # Overall area for interaction/drawing track
         self.min_val = min_val
         self.max_val = max_val
-        self._value = initial_val
-        self.handle_color = handle_color
-        self.track_color = track_color
-        self.handle_radius = h // 2 + 2 # Make handle slightly larger than track height
-        self.track_height = h // 3
-        self.track_y = y + (h - self.track_height) // 2
+        self._value = float(initial_val) # Store internal value as float for precision
+        self.handle_color = config.SETTINGS_SLIDER_HANDLE_COLOR
+        self.track_color = config.SETTINGS_SLIDER_TRACK_COLOR
+        self.handle_radius = h // 2 + 3 # Make handle slightly larger than track height
+        self.track_rect = pygame.Rect(x, y + h // 3, w, h // 3) # Track dimensions
         self.dragging = False
         self._update_handle_pos() # Calculate initial handle position
 
     def _update_handle_pos(self):
         """Calculates handle x-position based on value."""
-        ratio = (self._value - self.min_val) / (self.max_val - self.min_val) if (self.max_val - self.min_val) != 0 else 0
+        range_val = self.max_val - self.min_val
+        ratio = (self._value - self.min_val) / range_val if range_val != 0 else 0
         self.handle_x = self.rect.x + int(ratio * self.rect.width)
+        self.handle_y = self.rect.centery
 
     def handle_event(self, event):
-        """Handles mouse events for dragging the slider."""
+        """Handles mouse events for dragging the slider. Returns True if value changed."""
         changed = False
+        mouse_pos = pygame.mouse.get_pos()
+
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
                 # Check if click is on the handle or track area
-                handle_rect = pygame.Rect(self.handle_x - self.handle_radius, self.rect.y, self.handle_radius * 2, self.rect.height)
-                if handle_rect.collidepoint(event.pos) or self.rect.collidepoint(event.pos): # Allow clicking track too
+                handle_hitbox = pygame.Rect(self.handle_x - self.handle_radius, self.handle_y - self.handle_radius,
+                                           self.handle_radius * 2, self.handle_radius * 2)
+                # Allow clicking anywhere on the slider's main rect
+                if self.rect.collidepoint(mouse_pos):
                     self.dragging = True
                     # Update value based on click position immediately
-                    new_x = max(self.rect.x, min(event.pos[0], self.rect.right))
+                    new_x = max(self.rect.x, min(mouse_pos[0], self.rect.right))
                     ratio = (new_x - self.rect.x) / self.rect.width if self.rect.width != 0 else 0
-                    self._value = self.min_val + ratio * (self.max_val - self.min_val)
-                    self._value = max(self.min_val, min(self._value, self.max_val)) # Clamp value
+                    range_val = self.max_val - self.min_val
+                    self._value = self.min_val + ratio * range_val
+                    self._value = max(self.min_val, min(self._value, self.max_val)) # Clamp
                     self._update_handle_pos()
                     changed = True
 
@@ -86,10 +136,11 @@ class Slider:
 
         elif event.type == pygame.MOUSEMOTION:
             if self.dragging:
-                new_x = max(self.rect.x, min(event.pos[0], self.rect.right))
+                new_x = max(self.rect.x, min(mouse_pos[0], self.rect.right))
                 ratio = (new_x - self.rect.x) / self.rect.width if self.rect.width != 0 else 0
-                self._value = self.min_val + ratio * (self.max_val - self.min_val)
-                self._value = max(self.min_val, min(self._value, self.max_val)) # Clamp value
+                range_val = self.max_val - self.min_val
+                self._value = self.min_val + ratio * range_val
+                self._value = max(self.min_val, min(self._value, self.max_val)) # Clamp
                 self._update_handle_pos()
                 changed = True
         return changed
@@ -100,264 +151,318 @@ class Slider:
 
     def set_value(self, value):
         """Sets the slider's value programmatically."""
-        self._value = max(self.min_val, min(value, self.max_val))
+        self._value = float(max(self.min_val, min(value, self.max_val)))
         self._update_handle_pos()
 
     def draw(self, screen):
         """Draws the slider track and handle."""
         # Draw track
-        track_rect = pygame.Rect(self.rect.x, self.track_y, self.rect.width, self.track_height)
-        pygame.draw.rect(screen, self.track_color, track_rect, border_radius=self.track_height // 2)
+        pygame.draw.rect(screen, self.track_color, self.track_rect, border_radius=self.track_rect.height // 2)
         # Draw handle
-        pygame.draw.circle(screen, self.handle_color, (self.handle_x, self.rect.centery), self.handle_radius)
+        pygame.draw.circle(screen, self.handle_color, (self.handle_x, self.handle_y), self.handle_radius)
 
 
-# --- Settings Window State ---
-width_input = None
-height_input = None
-speed_slider = None # Add slider state
-on_speed_change_callback = None # Callback function
-save_button_rect = None
-cancel_button_rect = None
-window_rect = None
-font = None
-solver_buttons = [] # List to hold solver selection buttons
-selected_solver = "BFS" # Default selected solver
-SOLVER_OPTIONS = ["BFS", "DFS", "A*"] # Available solver options
+# --- Settings Window Class ---
+
+class SettingsWindow:
+    """Manages the state and drawing of the settings panel."""
+
+    def __init__(self, screen_width, screen_height, current_width, current_height,
+                 initial_delay_ms, speed_change_callback, current_solver, font):
+        """Initialize the settings window UI elements and state."""
+        self.font = font
+        self.on_speed_change_callback = speed_change_callback
+        self.selected_solver = current_solver
+        self.initial_width = current_width
+        self.initial_height = current_height
+        self.initial_solver = current_solver
+        self.initial_delay_ms = initial_delay_ms
+
+        # Window dimensions and position
+        win_width = config.SETTINGS_PANEL_WIDTH
+        win_height = config.SETTINGS_PANEL_HEIGHT
+        win_x = (screen_width - win_width) // 2
+        win_y = (screen_height - win_height) // 2
+        self.window_rect = pygame.Rect(win_x, win_y, win_width, win_height)
+
+        # --- UI Element Initialization ---
+        padding = 15
+        label_width = 100
+        input_w = 100
+        input_h = 35
+        element_y = self.window_rect.top + 60 # Starting Y for elements below title
+
+        # Width Input
+        self.width_label = self.font.render("Width:", True, config.SETTINGS_LABEL_COLOR)
+        width_input_x = self.window_rect.left + label_width + padding
+        self.width_input = InputBox(width_input_x, element_y, input_w, input_h,
+                                    current_width, self.font, max_len=3)
+        self.width_input.set_validity(self._validate_dimension(current_width, config.MAX_MAZE_WIDTH))
+        element_y += input_h + padding * 1.5
+
+        # Height Input
+        self.height_label = self.font.render("Height:", True, config.SETTINGS_LABEL_COLOR)
+        height_input_x = width_input_x
+        self.height_input = InputBox(height_input_x, element_y, input_w, input_h,
+                                     current_height, self.font, max_len=3)
+        self.height_input.set_validity(self._validate_dimension(current_height, config.MAX_MAZE_HEIGHT))
+        element_y += input_h + padding * 1.5
+
+        # Solver Selection
+        self.solver_label = self.font.render("Solver:", True, config.SETTINGS_LABEL_COLOR)
+        solver_button_w = 70
+        solver_button_h = 30
+        solver_button_padding = 8
+        num_solvers = len(config.SOLVER_OPTIONS)
+        total_solver_button_width = (solver_button_w * num_solvers) + (solver_button_padding * (num_solvers - 1))
+        solver_buttons_start_x = self.window_rect.left + label_width + padding # Align with inputs
+        solver_buttons_y = element_y
+
+        self.solver_buttons = []
+        button_font = pygame.font.Font(None, 28) # Slightly smaller font for buttons
+        for i, solver_name in enumerate(config.SOLVER_OPTIONS):
+            btn_rect = pygame.Rect(
+                solver_buttons_start_x + i * (solver_button_w + solver_button_padding),
+                solver_buttons_y + (input_h - solver_button_h) // 2, # Center vertically with label
+                solver_button_w, solver_button_h
+            )
+            text_surface = button_font.render(solver_name, True, config.BUTTON_TEXT_COLOR)
+            text_rect = text_surface.get_rect(center=btn_rect.center)
+            self.solver_buttons.append({
+                "name": solver_name, "rect": btn_rect,
+                "text_surface": text_surface, "text_rect": text_rect
+            })
+        element_y += input_h + padding * 1.5 # Move down past solver row
+
+        # Speed Slider
+        self.speed_label = self.font.render("AI Speed:", True, config.SETTINGS_LABEL_COLOR)
+        slider_w = win_width - label_width - padding * 3 - 40 # Adjust width (leave space for value)
+        slider_h = 25
+        slider_x = self.window_rect.left + label_width + padding
+        slider_y = element_y
+        initial_slider_val = self._map_delay_to_slider(initial_delay_ms)
+        self.speed_slider = Slider(slider_x, slider_y, slider_w, slider_h,
+                                   config.SLIDER_MIN_VAL, config.SLIDER_MAX_VAL,
+                                   initial_slider_val)
+        element_y += slider_h + padding * 2.5 # More space after slider
+
+        # Save/Cancel Buttons
+        button_w = 100
+        button_h = 40
+        button_y = self.window_rect.bottom - button_h - padding * 1.5
+        total_button_width = button_w * 2 + padding
+        start_button_x = self.window_rect.centerx - total_button_width // 2
+
+        self.save_button_rect = pygame.Rect(start_button_x, button_y, button_w, button_h)
+        self.cancel_button_rect = pygame.Rect(start_button_x + button_w + padding, button_y, button_w, button_h)
+        self.save_text = self.font.render("Save", True, config.BUTTON_TEXT_COLOR)
+        self.cancel_text = self.font.render("Cancel", True, config.BUTTON_TEXT_COLOR)
+        self.save_text_rect = self.save_text.get_rect(center=self.save_button_rect.center)
+        self.cancel_text_rect = self.cancel_text.get_rect(center=self.cancel_button_rect.center)
+
+        # Title
+        self.title_surface = self.font.render("Settings", True, config.TEXT_COLOR)
+        self.title_rect = self.title_surface.get_rect(center=(self.window_rect.centerx, self.window_rect.top + 30))
 
 
-# Define speed range for the slider (visual 0-100) and mapping to delay (ms)
-SLIDER_MIN_VAL = 0
-SLIDER_MAX_VAL = 100
-MIN_DELAY_MS = 1  # Fastest speed (increased)
-MAX_DELAY_MS = 500 # Slowest speed
+    def _validate_dimension(self, text_value, max_value):
+        """Validates width or height input."""
+        try:
+            val = int(text_value)
+            return 1 < val <= max_value # Min size 2x2, max from config
+        except ValueError:
+            return False # Not a number
 
-def map_slider_to_delay(slider_value):
-    """Maps slider value (0-100) to delay in milliseconds (non-linear)."""
-    # Use inverse mapping: higher slider value = lower delay (faster)
-    ratio = slider_value / (SLIDER_MAX_VAL - SLIDER_MIN_VAL) if (SLIDER_MAX_VAL - SLIDER_MIN_VAL) != 0 else 0
-    # Simple linear inverse mapping for now:
-    delay = MAX_DELAY_MS - ratio * (MAX_DELAY_MS - MIN_DELAY_MS)
-    return int(max(MIN_DELAY_MS, min(delay, MAX_DELAY_MS)))
+    def _validate_width(self, text_value):
+        return self._validate_dimension(text_value, config.MAX_MAZE_WIDTH)
 
-def map_delay_to_slider(delay_ms):
-    """Maps delay in milliseconds back to slider value (0-100)."""
-    ratio = (MAX_DELAY_MS - delay_ms) / (MAX_DELAY_MS - MIN_DELAY_MS) if (MAX_DELAY_MS - MIN_DELAY_MS) != 0 else 0
-    slider_value = ratio * (SLIDER_MAX_VAL - SLIDER_MIN_VAL)
-    return int(max(SLIDER_MIN_VAL, min(round(slider_value), SLIDER_MAX_VAL)))
+    def _validate_height(self, text_value):
+        return self._validate_dimension(text_value, config.MAX_MAZE_HEIGHT)
 
+    # --- Exponential Speed Mapping ---
+    def _map_slider_to_delay(self, slider_value):
+        """Maps slider value (0-100) to delay in milliseconds (exponential)."""
+        min_delay, max_delay = config.MIN_DELAY_MS, config.MAX_DELAY_MS
+        min_slider, max_slider = config.SLIDER_MIN_VAL, config.SLIDER_MAX_VAL
+        exponent = config.SLIDER_EXPONENT
 
-def init_settings_window(screen_width, screen_height, current_width, current_height,
-                         initial_delay_ms, speed_change_callback, current_solver="BFS"): # Add current_solver parameter
-    global width_input, height_input, speed_slider, on_speed_change_callback
-    global save_button_rect, cancel_button_rect, window_rect, font
-    global solver_buttons, selected_solver # Access global solver state
+        if max_slider == min_slider: return min_delay
+        if max_delay == min_delay: return min_delay
 
-    font = pygame.font.Font(None, 32)
-    on_speed_change_callback = speed_change_callback # Store the callback
-    selected_solver = current_solver # Set initial selected solver
+        # Map slider value to a 0-1 ratio
+        ratio = (slider_value - min_slider) / (max_slider - min_slider)
+        # Apply inverse exponential mapping (slider 0 = max delay, slider 100 = min delay)
+        mapped_ratio = (1.0 - ratio) ** exponent
+        # Map the 0-1 exponential ratio to the delay range
+        delay = min_delay + mapped_ratio * (max_delay - min_delay)
 
-    # Define window dimensions and position (centered) - Increased height for slider and solver options
-    win_width = 350
-    win_height = 400 # Further increased height
-    win_x = (screen_width - win_width) // 2
-    win_y = (screen_height - win_height) // 2
-    window_rect = pygame.Rect(win_x, win_y, win_width, win_height)
+        return int(max(min_delay, min(delay, max_delay))) # Clamp and convert to int
 
-    # Input boxes
-    input_w = 140
-    input_h = 32
-    padding = 10
-    label_width = 100 # Adjusted label width slightly
+    def _map_delay_to_slider(self, delay_ms):
+        """Maps delay in milliseconds back to slider value (0-100, exponential)."""
+        min_delay, max_delay = config.MIN_DELAY_MS, config.MAX_DELAY_MS
+        min_slider, max_slider = config.SLIDER_MIN_VAL, config.SLIDER_MAX_VAL
+        exponent = config.SLIDER_EXPONENT
 
-    width_label = font.render("Width:", True, config.TEXT_COLOR)
-    height_label = font.render("Height:", True, config.TEXT_COLOR)
-    solver_label = font.render("Solver:", True, config.TEXT_COLOR) # Solver label
-    speed_label = font.render("AI Speed:", True, config.TEXT_COLOR) # Speed label
+        if max_delay == min_delay: return min_slider # Avoid division by zero
+        if delay_ms <= min_delay: return max_slider
+        if delay_ms >= max_delay: return min_slider
 
+        # Map delay to a 0-1 ratio within the delay range
+        delay_ratio = (delay_ms - min_delay) / (max_delay - min_delay)
+        # Inverse of the exponential mapping (solve for 'ratio')
+        # mapped_ratio = (1 - ratio) ** exponent  =>  (1 - ratio) = mapped_ratio ** (1/exponent)
+        # => ratio = 1 - (mapped_ratio ** (1/exponent))
+        # Note: delay_ratio corresponds to mapped_ratio here because slider 0 = max delay
+        inv_exponent = 1.0 / exponent
+        ratio = 1.0 - (delay_ratio ** inv_exponent)
 
-    width_input_x = win_x + label_width + padding
-    width_input_y = win_y + padding * 3
-    height_input_x = width_input_x
-    height_input_y = width_input_y + input_h + padding * 2
+        # Map the 0-1 ratio back to the slider range
+        slider_value = min_slider + ratio * (max_slider - min_slider)
 
-    width_input = InputBox(width_input_x, width_input_y, input_w, input_h, str(current_width), font)
-    height_input = InputBox(height_input_x, height_input_y, input_w, input_h, str(current_height), font)
-
-    # Solver Selection Buttons
-    solver_button_w = 80
-    solver_button_h = 30
-    solver_button_padding = 5
-    total_solver_button_width = (solver_button_w * len(SOLVER_OPTIONS)) + (solver_button_padding * (len(SOLVER_OPTIONS) - 1))
-    solver_buttons_start_x = win_x + (win_width - total_solver_button_width) // 2
-    solver_buttons_y = height_input_y + input_h + padding * 4 # Position below height input
-
-    solver_buttons = []
-    for i, solver_name in enumerate(SOLVER_OPTIONS):
-        btn_rect = pygame.Rect(
-            solver_buttons_start_x + i * (solver_button_w + solver_button_padding),
-            solver_buttons_y,
-            solver_button_w,
-            solver_button_h
-        )
-        text_surface = font.render(solver_name, True, config.BUTTON_TEXT_COLOR)
-        text_rect = text_surface.get_rect(center=btn_rect.center)
-        solver_buttons.append({
-            "name": solver_name,
-            "rect": btn_rect,
-            "text_surface": text_surface,
-            "text_rect": text_rect
-        })
+        return int(max(min_slider, min(round(slider_value), max_slider))) # Clamp and round
 
 
-    # Slider (position adjusted for solver buttons)
-    slider_w = input_w + 50 # Make slider wider
-    slider_h = 20
-    slider_x = win_x + (win_width - slider_w) // 2 # Center slider horizontally
-    slider_y = solver_buttons_y + solver_button_h + padding * 3 # Position below solver buttons
-    initial_slider_val = map_delay_to_slider(initial_delay_ms)
-    speed_slider = Slider(slider_x, slider_y, slider_w, slider_h,
-                          SLIDER_MIN_VAL, SLIDER_MAX_VAL, initial_slider_val,
-                          config.SLIDER_HANDLE_COLOR, config.SLIDER_TRACK_COLOR)
+    def handle_event(self, event):
+        """Processes events for the settings window. Returns action dict or None."""
+        action = None
+        mouse_pos = pygame.mouse.get_pos()
 
-    # Buttons (position adjusted for new window height)
-    button_w = 100
-    button_h = 40
-    button_y = win_y + win_height - button_h - padding * 2
-    total_button_width = button_w * 2 + padding
-    start_button_x = win_x + (win_width - total_button_width) // 2
+        # Handle input box events
+        width_enter = self.width_input.handle_event(event, self._validate_width)
+        height_enter = self.height_input.handle_event(event, self._validate_height)
 
-    save_button_rect = pygame.Rect(start_button_x, button_y, button_w, button_h)
-    cancel_button_rect = pygame.Rect(start_button_x + button_w + padding, button_y, button_w, button_h)
+        # Handle slider events
+        slider_changed = self.speed_slider.handle_event(event)
+        if slider_changed and self.on_speed_change_callback:
+            new_delay = self._map_slider_to_delay(self.speed_slider.get_value())
+            self.on_speed_change_callback(new_delay) # Notify immediately
 
+        # Check for button clicks
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Solver buttons
+            for btn in self.solver_buttons:
+                if btn["rect"].collidepoint(mouse_pos):
+                    self.selected_solver = btn["name"]
+                    print(f"Selected solver: {self.selected_solver}")
+                    # No action needed, just redraw highlights selection
 
-def draw_settings_window(screen):
-    global solver_buttons, selected_solver # Declare global
-    if not font or not width_input or not height_input or not speed_slider or not save_button_rect or not cancel_button_rect or not window_rect or not solver_buttons:
-        print("Warning: Settings UI not fully initialized!")
-        return
+            # Save button
+            if self.save_button_rect.collidepoint(mouse_pos):
+                # Final validation before saving
+                width_val = self.width_input.get_value()
+                height_val = self.height_input.get_value()
+                is_w_valid = self._validate_width(str(width_val) if width_val is not None else "")
+                is_h_valid = self._validate_height(str(height_val) if height_val is not None else "")
+                self.width_input.set_validity(is_w_valid)
+                self.height_input.set_validity(is_h_valid)
 
-    # Draw background panel
-    pygame.draw.rect(screen, config.PANEL_COLOR, window_rect, border_radius=10)
-    pygame.draw.rect(screen, config.BORDER_COLOR, window_rect, 2, border_radius=10) # Border
+                if is_w_valid and is_h_valid:
+                    print(f"Settings saved: W={width_val}, H={height_val}, Solver={self.selected_solver}")
+                    action = {"action": "save", "width": width_val, "height": height_val, "solver": self.selected_solver}
+                else:
+                    print("Cannot save: Invalid dimensions.")
+                    # Optionally add a visual cue like shaking the window or message
 
-    win_x = window_rect.x
-
-    # Draw Title
-    title_surface = font.render("Settings", True, config.TEXT_COLOR)
-    title_rect = title_surface.get_rect(center=(window_rect.centerx, window_rect.top + 20))
-    screen.blit(title_surface, title_rect)
-
-    # Draw Labels
-    padding = 10
-    label_width = 100 # Use consistent label width
-    width_label_surface = font.render("Width:", True, config.TEXT_COLOR)
-    height_label_surface = font.render("Height:", True, config.TEXT_COLOR)
-    solver_label_surface = font.render("Solver:", True, config.TEXT_COLOR) # Solver label
-    speed_label_surface = font.render("AI Speed:", True, config.TEXT_COLOR) # Speed label
-
-    screen.blit(width_label_surface, (win_x + padding, width_input.rect.y + 5))
-    screen.blit(height_label_surface, (win_x + padding, height_input.rect.y + 5))
-    screen.blit(solver_label_surface, (win_x + padding, solver_buttons[0]["rect"].y + (solver_buttons[0]["rect"].height - solver_label_surface.get_height()) // 2)) # Position solver label
-    # Position speed label above the slider (moved up by font height)
-    screen.blit(speed_label_surface, (win_x + padding, speed_slider.rect.y - speed_label_surface.get_height()))
-
-    # Draw Input Boxes
-    width_input.draw(screen)
-    height_input.draw(screen)
-
-    # Draw Solver Buttons
-    mouse_pos = pygame.mouse.get_pos()
-    for btn in solver_buttons:
-        btn_color = config.BUTTON_HOVER_COLOR if btn["rect"].collidepoint(mouse_pos) else config.BUTTON_COLOR
-        # Highlight selected solver button
-        if btn["name"] == selected_solver:
-             btn_color = (btn_color[0] + 50, btn_color[1] + 50, btn_color[2] + 50) # Make selected button slightly brighter
-
-        pygame.draw.rect(screen, btn_color, btn["rect"], border_radius=5)
-        screen.blit(btn["text_surface"], btn["text_rect"])
-
-
-    # Draw Slider
-    speed_slider.draw(screen)
-    # Optional: Draw slider value text
-    slider_val_text = font.render(f"{speed_slider.get_value()}", True, config.TEXT_COLOR)
-    screen.blit(slider_val_text, (speed_slider.rect.right + padding, speed_slider.rect.y + (speed_slider.rect.height - slider_val_text.get_height()) // 2))
-
-
-    # Draw Action Buttons (Save/Cancel)
-    save_hover = save_button_rect.collidepoint(mouse_pos)
-    cancel_hover = cancel_button_rect.collidepoint(mouse_pos)
-
-    save_color = config.BUTTON_HOVER_COLOR if save_hover else config.BUTTON_COLOR
-    cancel_color = config.BUTTON_HOVER_COLOR if cancel_hover else config.BUTTON_COLOR
-
-    pygame.draw.rect(screen, save_color, save_button_rect, border_radius=5)
-    pygame.draw.rect(screen, cancel_color, cancel_button_rect, border_radius=5)
-
-    save_text = font.render("Save", True, config.BUTTON_TEXT_COLOR)
-    cancel_text = font.render("Cancel", True, config.BUTTON_TEXT_COLOR)
-    save_text_rect = save_text.get_rect(center=save_button_rect.center)
-    cancel_text_rect = cancel_text.get_rect(center=cancel_button_rect.center)
-
-    screen.blit(save_text, save_text_rect)
-    screen.blit(cancel_text, cancel_text_rect)
-
-
-def handle_settings_event(event):
-    global on_speed_change_callback, selected_solver, solver_buttons # Access global state, add solver_buttons
-    if not font or not width_input or not height_input or not speed_slider or not save_button_rect or not cancel_button_rect or not window_rect or not solver_buttons:
-         return None # Not initialized
-
-    # Handle events for input boxes
-    width_enter = width_input.handle_event(event)
-    height_enter = height_input.handle_event(event)
-
-    # Handle events for slider
-    slider_changed = speed_slider.handle_event(event)
-    if slider_changed and on_speed_change_callback:
-        new_delay = map_slider_to_delay(speed_slider.get_value())
-        on_speed_change_callback(new_delay) # Call the callback with the new delay value
-        # We don't return an action here, the callback handles the immediate effect
-
-    # Check for button clicks
-    if event.type == pygame.MOUSEBUTTONDOWN:
-        if event.button == 1:
-            # Check solver button clicks
-            for btn in solver_buttons:
-                if btn["rect"].collidepoint(event.pos):
-                    selected_solver = btn["name"]
-                    print(f"Selected solver: {selected_solver}")
-                    # No action returned, just update state and redraw
-
-            # Check Save/Cancel button clicks
-            if save_button_rect.collidepoint(event.pos):
-                try:
-                    new_width = int(width_input.text)
-                    new_height = int(height_input.text)
-                    if new_width > 0 and new_height > 0:
-                        print(f"Settings saved: Width={new_width}, Height={new_height}, Solver={selected_solver}")
-                        # Speed is already handled by callback, just save dimensions and solver
-                        return {"action": "save", "width": new_width, "height": new_height, "solver": selected_solver}
-                    else:
-                        print("Invalid dimensions. Width and Height must be positive.")
-                        return None
-                except ValueError:
-                    print("Invalid input. Please enter numbers for width and height.")
-                    return None
-
-            elif cancel_button_rect.collidepoint(event.pos):
+            # Cancel button
+            elif self.cancel_button_rect.collidepoint(mouse_pos):
                 print("Settings canceled.")
-                return {"action": "cancel"}
+                action = {"action": "cancel"}
 
-    # Check for Enter key press in input boxes (no action for now)
-    if width_enter or height_enter:
-        pass
+        # Check for Enter key press (treat as Save if inputs are valid)
+        if (width_enter or height_enter):
+            width_val = self.width_input.get_value()
+            height_val = self.height_input.get_value()
+            is_w_valid = self._validate_width(str(width_val) if width_val is not None else "")
+            is_h_valid = self._validate_height(str(height_val) if height_val is not None else "")
+            self.width_input.set_validity(is_w_valid)
+            self.height_input.set_validity(is_h_valid)
+            if is_w_valid and is_h_valid:
+                 print(f"Settings saved (Enter): W={width_val}, H={height_val}, Solver={self.selected_solver}")
+                 action = {"action": "save", "width": width_val, "height": height_val, "solver": self.selected_solver}
+            else:
+                 print("Enter pressed but dimensions invalid.")
 
-    # Check for Escape key to cancel
-    if event.type == pygame.KEYDOWN:
-        if event.key == pygame.K_ESCAPE:
+
+        # Check for Escape key (treat as Cancel)
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             print("Settings canceled (Escape key).")
-            return {"action": "cancel"}
+            action = {"action": "cancel"}
 
-    return None # No save/cancel action completed
+        return action
+
+
+    def draw(self, screen):
+        """Draws the entire settings window UI."""
+        mouse_pos = pygame.mouse.get_pos()
+
+        # Draw background panel and border
+        pygame.draw.rect(screen, config.SETTINGS_PANEL_COLOR, self.window_rect, border_radius=10)
+        pygame.draw.rect(screen, config.SETTINGS_BORDER_COLOR, self.window_rect, 2, border_radius=10) # Border
+
+        # Draw Title
+        screen.blit(self.title_surface, self.title_rect)
+
+        # --- Draw Labels and Inputs ---
+        label_x = self.window_rect.left + 15 # Shared X for labels
+        # Width
+        screen.blit(self.width_label, (label_x, self.width_input.rect.centery - self.width_label.get_height() // 2))
+        self.width_input.draw(screen)
+        # Height
+        screen.blit(self.height_label, (label_x, self.height_input.rect.centery - self.height_label.get_height() // 2))
+        self.height_input.draw(screen)
+        # Solver
+        screen.blit(self.solver_label, (label_x, self.solver_buttons[0]["rect"].centery - self.solver_label.get_height() // 2))
+
+        # --- Draw Solver Buttons ---
+        for btn in self.solver_buttons:
+            is_selected = btn["name"] == self.selected_solver
+            is_hover = btn["rect"].collidepoint(mouse_pos)
+            base_color = config.BUTTON_COLOR
+            hover_color = config.BUTTON_HOVER_COLOR
+
+            # Determine button color based on state
+            if is_selected:
+                # Make selected button visually distinct (e.g., brighter or different border)
+                # Here, slightly brighter version of base/hover
+                sel_base_col = tuple(min(255, c + 40) for c in base_color)
+                sel_hover_col = tuple(min(255, c + 40) for c in hover_color)
+                btn_color = sel_hover_col if is_hover else sel_base_col
+                border_color = config.SETTINGS_BORDER_COLOR # Add border to selected
+                border_width = 2
+            else:
+                btn_color = hover_color if is_hover else base_color
+                border_color = btn_color # No distinct border
+                border_width = 0
+
+            pygame.draw.rect(screen, btn_color, btn["rect"], border_radius=5)
+            if border_width > 0:
+                 pygame.draw.rect(screen, border_color, btn["rect"], border_width, border_radius=5)
+
+            screen.blit(btn["text_surface"], btn["text_rect"])
+
+        # --- Draw Speed Slider ---
+        screen.blit(self.speed_label, (label_x, self.speed_slider.rect.centery - self.speed_label.get_height() // 2))
+        self.speed_slider.draw(screen)
+        # Draw slider value text next to it
+        slider_val_text = self.font.render(f"{self.speed_slider.get_value()}", True, config.TEXT_COLOR)
+        val_rect = slider_val_text.get_rect(midleft=(self.speed_slider.rect.right + 10, self.speed_slider.rect.centery))
+        screen.blit(slider_val_text, val_rect)
+
+        # --- Draw Action Buttons (Save/Cancel) ---
+        save_hover = self.save_button_rect.collidepoint(mouse_pos)
+        cancel_hover = self.cancel_button_rect.collidepoint(mouse_pos)
+
+        # Check if Save is allowed (inputs must be valid)
+        save_enabled = self.width_input.is_valid and self.height_input.is_valid
+        save_base_color = config.BUTTON_COLOR if save_enabled else (100, 100, 100) # Grey out if disabled
+        save_hover_color = config.BUTTON_HOVER_COLOR if save_enabled else (120, 120, 120)
+        save_color = save_hover_color if save_hover and save_enabled else save_base_color
+
+        cancel_color = config.BUTTON_HOVER_COLOR if cancel_hover else config.BUTTON_COLOR
+
+        pygame.draw.rect(screen, save_color, self.save_button_rect, border_radius=5)
+        pygame.draw.rect(screen, cancel_color, self.cancel_button_rect, border_radius=5)
+
+        screen.blit(self.save_text, self.save_text_rect)
+        screen.blit(self.cancel_text, self.cancel_text_rect)

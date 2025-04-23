@@ -1,95 +1,80 @@
+# src/solvers/astar_solver.py
+
 import heapq
 
 def heuristic(a, b):
     """
     Manhattan distance heuristic for A* search.
-    Calculates the straight-line distance between two points (ignoring walls).
+    Calculates the grid distance between two points (ignoring walls).
     """
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
-def solve_astar_step_by_step(grid):
+def solve_astar_step_by_step(grid, start_node, end_node):
     """
-    Performs a step-by-step A* search on the maze grid, yielding visited nodes.
+    Performs a step-by-step A* search on the maze grid.
 
     Args:
         grid (list[list[str]]): The maze grid where '#' is wall, ' ' is path.
-                                 Tries to dynamically find entrance/exit on edges.
+        start_node (tuple[int, int]): The (x, y) coordinates of the starting cell.
+        end_node (tuple[int, int]): The (x, y) coordinates of the ending cell.
 
     Yields:
-        tuple: (visited_set, current_path_segment, is_done, final_path)
-            visited_set (set[tuple[int, int]]): Set of (x, y) coordinates visited so far.
-            current_path_segment (list[tuple[int, int]]): The path segment being explored (A* path).
+        tuple: (visited_set, current_best_path, is_done, final_path)
+            visited_set (set[tuple[int, int]]): Set of (x, y) coordinates considered (in open or closed set).
+            current_best_path (list[tuple[int, int]]): The path segment leading to the node just expanded.
             is_done (bool): True if the search is complete (found or failed).
             final_path (list[tuple[int, int]] or None): The complete path if found, else None.
     """
     height = len(grid)
     width = len(grid[0]) if height > 0 else 0
-    if height == 0 or width == 0:
-        yield set(), [], True, None # Indicate immediate completion, no path
+
+    if not (0 <= start_node[1] < height and 0 <= start_node[0] < width and grid[start_node[1]][start_node[0]] == ' '):
+        print(f"Solver Error (A*): Invalid start node {start_node}.")
+        yield set(), [], True, None
         return
-
-    # --- Find Entrance and Exit (Same logic as BFS/DFS) ---
-    start_node = None
-    end_node = None
-    possible_starts = []
-    possible_ends = []
-    # Top edge
-    for x in range(1, width - 1):
-        if grid[0][x] == ' ': possible_starts.append((x, 0))
-    # Bottom edge
-    for x in range(1, width - 1):
-        if grid[height - 1][x] == ' ': possible_ends.append((x, height - 1))
-    # Left edge
-    for y in range(1, height - 1):
-        if grid[y][0] == ' ': possible_starts.append((0, y))
-    # Right edge
-    for y in range(1, height - 1):
-        if grid[y][width - 1] == ' ': possible_ends.append((width - 1, y))
-    # Corners if needed
-    if not possible_starts:
-        if grid[0][0] == ' ': possible_starts.append((0, 0))
-        if grid[height-1][0] == ' ': possible_starts.append((0, height-1))
-    if not possible_ends:
-         if grid[0][width-1] == ' ': possible_ends.append((width-1, 0))
-         if grid[height-1][width-1] == ' ': possible_ends.append((width-1, height-1))
-
-    start_node = possible_starts[0] if possible_starts else None
-    end_node = possible_ends[0] if possible_ends else None
-
-    # Fallback
-    if start_node is None and grid[1][0] == ' ': start_node = (0, 1)
-    if end_node is None and grid[height - 2][width - 1] == ' ': end_node = (width-1, height-2)
-
-    if start_node is None or end_node is None:
-        print("Solver Error (A*): Could not determine start or end node.")
+    if not (0 <= end_node[1] < height and 0 <= end_node[0] < width and grid[end_node[1]][end_node[0]] == ' '):
+        print(f"Solver Error (A*): Invalid end node {end_node}.")
         yield set(), [], True, None
         return
 
-    print(f"Solver (A*): Start={start_node}, End={end_node}")
+    print(f"Solver (A*): Starting search from {start_node} to {end_node}")
 
     # --- A* Implementation (Step-by-Step) ---
     # Priority queue: stores (f_cost, g_cost, node, path_to_node)
     # f_cost = g_cost + h_cost
     # g_cost = cost from start to current node
     # h_cost = heuristic estimate from current node to end
-    open_set = [(0 + heuristic(start_node, end_node), 0, start_node, [start_node])]
-    heapq.heapify(open_set)
+    start_h_cost = heuristic(start_node, end_node)
+    open_set_heap = [(start_h_cost, 0, start_node, [start_node])] # (f_cost, g_cost, node, path)
+    heapq.heapify(open_set_heap)
 
-    # Keep track of the lowest g_cost found for each node
+    # Keep track of the lowest g_cost found to reach each node (closed set implicitly)
     g_costs = {start_node: 0}
 
-    # Keep track of visited nodes for visualization
-    visited = {start_node}
-    yield visited, [start_node], False, None # Initial state
+    # Keep track of all nodes ever added to the open set for visualization
+    visited_for_vis = {start_node}
 
-    while open_set:
-        f_cost, current_g_cost, (current_x, current_y), current_path_segment = heapq.heappop(open_set)
+    # Yield initial state
+    yield visited_for_vis, [start_node], False, None
+
+    while open_set_heap:
+        f_cost, current_g_cost, current_node, current_path_segment = heapq.heappop(open_set_heap)
+
+        # Optimization: If we pulled a node from the queue but found a shorter path
+        # to it already, skip processing this one.
+        if current_g_cost > g_costs.get(current_node, float('inf')):
+            continue
+
+        # Yield the state representing the node being expanded
+        yield visited_for_vis, current_path_segment, False, None
 
         # Check if we reached the goal
-        if (current_x, current_y) == end_node:
-            yield visited, current_path_segment, True, current_path_segment # Found the exit
+        if current_node == end_node:
+            print(f"Solver (A*): Path found to {end_node}.")
+            yield visited_for_vis, current_path_segment, True, current_path_segment # Found the exit
             return # Stop generation
 
+        current_x, current_y = current_node
         # Explore neighbors (Up, Down, Left, Right)
         for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0)]:
             next_x, next_y = current_x + dx, current_y + dy
@@ -100,23 +85,23 @@ def solve_astar_step_by_step(grid):
                 # Cost to reach this neighbor is current_g_cost + 1 (assuming uniform cost)
                 new_g_cost = current_g_cost + 1
 
-                # If this path to neighbor is better than any previous path found
-                if neighbor_node not in g_costs or new_g_cost < g_costs[neighbor_node]:
+                # If this path to neighbor is better than any previous path found OR neighbor not seen yet
+                if new_g_cost < g_costs.get(neighbor_node, float('inf')):
+                    # Update cost and path
                     g_costs[neighbor_node] = new_g_cost
                     h_cost = heuristic(neighbor_node, end_node)
                     f_cost = new_g_cost + h_cost
 
-                    new_path_segment = list(current_path_segment)
+                    new_path_segment = list(current_path_segment) # Copy path
                     new_path_segment.append(neighbor_node)
 
-                    heapq.heappush(open_set, (f_cost, new_g_cost, neighbor_node, new_path_segment))
+                    # Add to priority queue
+                    heapq.heappush(open_set_heap, (f_cost, new_g_cost, neighbor_node, new_path_segment))
 
-                    # Add to visited for visualization if not already there
-                    if neighbor_node not in visited:
-                         visited.add(neighbor_node)
-                         # Yield state after adding a node to the open set and visited set
-                         yield visited, new_path_segment, False, None
+                    # Add to visited set for visualization
+                    visited_for_vis.add(neighbor_node)
+                    # No yield here, yield happens when node is *popped* from heap
 
-
+    # If the loop finishes, the open set is empty, meaning no path found
     print(f"Solver (A*): No path found from {start_node} to {end_node}")
-    yield visited, [], True, None # Indicate completion, no path found
+    yield visited_for_vis, [], True, None # Indicate completion, no path found

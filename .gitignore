@@ -1,3 +1,5 @@
+# .gitignore
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -40,7 +42,7 @@ htmlcov/
 .tox/
 .nox/
 .coverage
-.coverage.*_file
+.coverage.*
 .cache
 nosetests.xml
 coverage.xml
@@ -48,11 +50,13 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+cache/
 cover/
 
 # Translations
 *.mo
 *.pot
+*.po
 
 # Django stuff:
 *.log
@@ -126,19 +130,30 @@ dmypy.json
 # Cython cache files
 cython_debug/
 
+# VS Code settings
+.vscode/
+
+# JetBrains IDE settings
+.idea/
+
+# Temporary files from editors
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+
 # OS generated files
 .DS_Store
 Thumbs.db
 
-# Editor/IDE specific files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Logs and temporary files
+# Log files
 *.log
-*.tmp
+logs/
+
+# Temp files
 temp/
 tmp/
+
+# Local settings override
+local_config.py
