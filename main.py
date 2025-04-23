@@ -1,22 +1,34 @@
 import pygame
 import sys
 import argparse
-import pygame
-import sys
-import argparse
 import config # Import the configuration
 
 from src.maze_generator import create_maze
-# from ui.maze_display import draw_maze # Replaced by MazeDisplay class
 from ui.maze_display import MazeDisplay, AI_SOLVE_STEP_EVENT # Import the class and event
-# from src.solvers.bfs_solver import find_path_bfs # Solver logic is now handled via MazeDisplay
 from ui.settings_window import init_settings_window, draw_settings_window, handle_settings_event # Import settings UI functions
+
+# Import solver functions
+from src.solvers.bfs_solver import solve_bfs_step_by_step
+from src.solvers.dfs_solver import solve_dfs_step_by_step
+from src.solvers.astar_solver import solve_astar_step_by_step
 
 # Constants - REMOVED, now in config.py
 # DEFAULT_WIDTH = 100
 # DEFAULT_HEIGHT = 100
 # DEFAULT_CELL_SIZE = 0 # Change default to 0 to detect if user specified it
 # BACKGROUND_COLOR = (100, 100, 100) # Grey background outside maze
+
+# Import solver functions
+from src.solvers.bfs_solver import solve_bfs_step_by_step
+from src.solvers.dfs_solver import solve_dfs_step_by_step
+from src.solvers.astar_solver import solve_astar_step_by_step
+
+# Map solver names to functions
+SOLVERS = {
+    "BFS": solve_bfs_step_by_step,
+    "DFS": solve_dfs_step_by_step,
+    "A*": solve_astar_step_by_step,
+}
 
 def main():
     parser = argparse.ArgumentParser(description="Generate and display a maze.")
@@ -163,6 +175,7 @@ def main():
     # visited_cells = None # Removed
     # solving_in_progress = False # Removed (use maze_display.is_solving())
     # solve_requested = False # Removed
+    current_solver_name = "BFS" # Track the currently selected solver name
 
     # --- Settings State ---
     settings_window_open = False # Track if the settings window is open
@@ -201,11 +214,13 @@ def main():
                 if action_result["action"] == "save":
                     new_width = action_result["width"]
                     new_height = action_result["height"]
-                    print(f"Applying new settings: Width={new_width}, Height={new_height}")
+                    new_solver_name = action_result["solver"] # Get selected solver
+                    print(f"Applying new settings: Width={new_width}, Height={new_height}, Solver={new_solver_name}")
 
                     # --- Update Maze Config and Regenerate ---
                     maze_width = new_width
                     maze_height = new_height
+                    current_solver_name = new_solver_name # Update current solver
                     # Regenerate maze
                     maze_grid = create_maze(maze_width, maze_height)
                     grid_render_height = len(maze_grid)
@@ -320,14 +335,16 @@ def main():
                     maze_display.set_maze(maze_grid) # Update display
                     # maze_display.reset_solve_state() # Done by set_maze
                 elif event.key == pygame.K_s: # Solve
-                    print("Starting AI solve (S key)...")
-                    maze_display.start_ai_solve() # Start visualization
+                    print(f"Starting AI solve ({current_solver_name}) (S key)...")
+                    solver_func = SOLVERS.get(current_solver_name, solve_bfs_step_by_step) # Get selected solver function, default to BFS
+                    maze_display.start_ai_solve(solver_function=solver_func) # Start visualization with selected solver
                 elif event.key == pygame.K_g: # Settings
                     print("Opening settings...")
-                    # Initialize the settings window state before opening
+                    # Initialize the settings window state before opening, pass current solver
                     init_settings_window(screen.get_width(), screen.get_height(),
                                          maze_width, maze_height,
-                                         ai_solve_delay_ms, handle_speed_change) # Pass delay and callback
+                                         ai_solve_delay_ms, handle_speed_change,
+                                         current_solver=current_solver_name) # Pass current solver
                     settings_window_open = True # Open the settings window
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1: # Left mouse click
@@ -337,14 +354,16 @@ def main():
                         maze_display.set_maze(maze_grid) # Update display
                         # maze_display.reset_solve_state() # Done by set_maze
                     elif solve_button_hover:
-                        print("Starting AI solve (button click)...")
-                        maze_display.start_ai_solve() # Start visualization
+                        print(f"Starting AI solve ({current_solver_name}) (button click)...")
+                        solver_func = SOLVERS.get(current_solver_name, solve_bfs_step_by_step) # Get selected solver function, default to BFS
+                        maze_display.start_ai_solve(solver_function=solver_func) # Start visualization with selected solver
                     elif settings_button_hover:
                         print("Opening settings...")
-                        # Initialize the settings window state before opening
+                        # Initialize the settings window state before opening, pass current solver
                         init_settings_window(screen.get_width(), screen.get_height(),
                                              maze_width, maze_height,
-                                             ai_solve_delay_ms, handle_speed_change) # Pass delay and callback
+                                             ai_solve_delay_ms, handle_speed_change,
+                                             current_solver=current_solver_name) # Pass current solver
                         settings_window_open = True # Open the settings window
                     elif exit_button_hover:
                         print("Exiting game...")

@@ -4,7 +4,6 @@ import math # For mapping slider value
 
 # Basic Input Box Class (can be expanded)
 class InputBox:
-    # ... (InputBox class code remains unchanged) ...
     def __init__(self, x, y, w, h, initial_text='', font=None):
         self.rect = pygame.Rect(x, y, w, h)
         self.color = config.INPUT_BOX_COLOR
@@ -122,6 +121,10 @@ save_button_rect = None
 cancel_button_rect = None
 window_rect = None
 font = None
+solver_buttons = [] # List to hold solver selection buttons
+selected_solver = "BFS" # Default selected solver
+SOLVER_OPTIONS = ["BFS", "DFS", "A*"] # Available solver options
+
 
 # Define speed range for the slider (visual 0-100) and mapping to delay (ms)
 SLIDER_MIN_VAL = 0
@@ -145,15 +148,18 @@ def map_delay_to_slider(delay_ms):
 
 
 def init_settings_window(screen_width, screen_height, current_width, current_height,
-                         initial_delay_ms, speed_change_callback):
+                         initial_delay_ms, speed_change_callback, current_solver="BFS"): # Add current_solver parameter
     global width_input, height_input, speed_slider, on_speed_change_callback
     global save_button_rect, cancel_button_rect, window_rect, font
+    global solver_buttons, selected_solver # Access global solver state
+
     font = pygame.font.Font(None, 32)
     on_speed_change_callback = speed_change_callback # Store the callback
+    selected_solver = current_solver # Set initial selected solver
 
-    # Define window dimensions and position (centered) - Increased height for slider
+    # Define window dimensions and position (centered) - Increased height for slider and solver options
     win_width = 350
-    win_height = 320 # Increased height
+    win_height = 400 # Further increased height
     win_x = (screen_width - win_width) // 2
     win_y = (screen_height - win_height) // 2
     window_rect = pygame.Rect(win_x, win_y, win_width, win_height)
@@ -166,7 +172,9 @@ def init_settings_window(screen_width, screen_height, current_width, current_hei
 
     width_label = font.render("Width:", True, config.TEXT_COLOR)
     height_label = font.render("Height:", True, config.TEXT_COLOR)
+    solver_label = font.render("Solver:", True, config.TEXT_COLOR) # Solver label
     speed_label = font.render("AI Speed:", True, config.TEXT_COLOR) # Speed label
+
 
     width_input_x = win_x + label_width + padding
     width_input_y = win_y + padding * 3
@@ -176,11 +184,37 @@ def init_settings_window(screen_width, screen_height, current_width, current_hei
     width_input = InputBox(width_input_x, width_input_y, input_w, input_h, str(current_width), font)
     height_input = InputBox(height_input_x, height_input_y, input_w, input_h, str(current_height), font)
 
-    # Slider
+    # Solver Selection Buttons
+    solver_button_w = 80
+    solver_button_h = 30
+    solver_button_padding = 5
+    total_solver_button_width = (solver_button_w * len(SOLVER_OPTIONS)) + (solver_button_padding * (len(SOLVER_OPTIONS) - 1))
+    solver_buttons_start_x = win_x + (win_width - total_solver_button_width) // 2
+    solver_buttons_y = height_input_y + input_h + padding * 4 # Position below height input
+
+    solver_buttons = []
+    for i, solver_name in enumerate(SOLVER_OPTIONS):
+        btn_rect = pygame.Rect(
+            solver_buttons_start_x + i * (solver_button_w + solver_button_padding),
+            solver_buttons_y,
+            solver_button_w,
+            solver_button_h
+        )
+        text_surface = font.render(solver_name, True, config.BUTTON_TEXT_COLOR)
+        text_rect = text_surface.get_rect(center=btn_rect.center)
+        solver_buttons.append({
+            "name": solver_name,
+            "rect": btn_rect,
+            "text_surface": text_surface,
+            "text_rect": text_rect
+        })
+
+
+    # Slider (position adjusted for solver buttons)
     slider_w = input_w + 50 # Make slider wider
     slider_h = 20
     slider_x = win_x + (win_width - slider_w) // 2 # Center slider horizontally
-    slider_y = height_input_y + input_h + padding * 3 # Position below height input
+    slider_y = solver_buttons_y + solver_button_h + padding * 3 # Position below solver buttons
     initial_slider_val = map_delay_to_slider(initial_delay_ms)
     speed_slider = Slider(slider_x, slider_y, slider_w, slider_h,
                           SLIDER_MIN_VAL, SLIDER_MAX_VAL, initial_slider_val,
@@ -198,7 +232,8 @@ def init_settings_window(screen_width, screen_height, current_width, current_hei
 
 
 def draw_settings_window(screen):
-    if not font or not width_input or not height_input or not speed_slider or not save_button_rect or not cancel_button_rect or not window_rect:
+    global solver_buttons, selected_solver # Declare global
+    if not font or not width_input or not height_input or not speed_slider or not save_button_rect or not cancel_button_rect or not window_rect or not solver_buttons:
         print("Warning: Settings UI not fully initialized!")
         return
 
@@ -218,16 +253,30 @@ def draw_settings_window(screen):
     label_width = 100 # Use consistent label width
     width_label_surface = font.render("Width:", True, config.TEXT_COLOR)
     height_label_surface = font.render("Height:", True, config.TEXT_COLOR)
-    speed_label_surface = font.render("AI Speed:", True, config.TEXT_COLOR) # Speed Label
+    solver_label_surface = font.render("Solver:", True, config.TEXT_COLOR) # Solver label
+    speed_label_surface = font.render("AI Speed:", True, config.TEXT_COLOR) # Speed label
 
     screen.blit(width_label_surface, (win_x + padding, width_input.rect.y + 5))
     screen.blit(height_label_surface, (win_x + padding, height_input.rect.y + 5))
+    screen.blit(solver_label_surface, (win_x + padding, solver_buttons[0]["rect"].y + (solver_buttons[0]["rect"].height - solver_label_surface.get_height()) // 2)) # Position solver label
     # Position speed label above the slider (moved up by font height)
     screen.blit(speed_label_surface, (win_x + padding, speed_slider.rect.y - speed_label_surface.get_height()))
 
     # Draw Input Boxes
     width_input.draw(screen)
     height_input.draw(screen)
+
+    # Draw Solver Buttons
+    mouse_pos = pygame.mouse.get_pos()
+    for btn in solver_buttons:
+        btn_color = config.BUTTON_HOVER_COLOR if btn["rect"].collidepoint(mouse_pos) else config.BUTTON_COLOR
+        # Highlight selected solver button
+        if btn["name"] == selected_solver:
+             btn_color = (btn_color[0] + 50, btn_color[1] + 50, btn_color[2] + 50) # Make selected button slightly brighter
+
+        pygame.draw.rect(screen, btn_color, btn["rect"], border_radius=5)
+        screen.blit(btn["text_surface"], btn["text_rect"])
+
 
     # Draw Slider
     speed_slider.draw(screen)
@@ -236,8 +285,7 @@ def draw_settings_window(screen):
     screen.blit(slider_val_text, (speed_slider.rect.right + padding, speed_slider.rect.y + (speed_slider.rect.height - slider_val_text.get_height()) // 2))
 
 
-    # Draw Buttons
-    mouse_pos = pygame.mouse.get_pos()
+    # Draw Action Buttons (Save/Cancel)
     save_hover = save_button_rect.collidepoint(mouse_pos)
     cancel_hover = cancel_button_rect.collidepoint(mouse_pos)
 
@@ -257,9 +305,9 @@ def draw_settings_window(screen):
 
 
 def handle_settings_event(event):
-    global on_speed_change_callback
-    if not width_input or not height_input or not speed_slider or not save_button_rect or not cancel_button_rect:
-        return None # Not initialized
+    global on_speed_change_callback, selected_solver, solver_buttons # Access global state, add solver_buttons
+    if not font or not width_input or not height_input or not speed_slider or not save_button_rect or not cancel_button_rect or not window_rect or not solver_buttons:
+         return None # Not initialized
 
     # Handle events for input boxes
     width_enter = width_input.handle_event(event)
@@ -275,14 +323,22 @@ def handle_settings_event(event):
     # Check for button clicks
     if event.type == pygame.MOUSEBUTTONDOWN:
         if event.button == 1:
+            # Check solver button clicks
+            for btn in solver_buttons:
+                if btn["rect"].collidepoint(event.pos):
+                    selected_solver = btn["name"]
+                    print(f"Selected solver: {selected_solver}")
+                    # No action returned, just update state and redraw
+
+            # Check Save/Cancel button clicks
             if save_button_rect.collidepoint(event.pos):
                 try:
                     new_width = int(width_input.text)
                     new_height = int(height_input.text)
                     if new_width > 0 and new_height > 0:
-                        print(f"Settings saved: Width={new_width}, Height={new_height}")
-                        # Speed is already handled by callback, just save dimensions
-                        return {"action": "save", "width": new_width, "height": new_height}
+                        print(f"Settings saved: Width={new_width}, Height={new_height}, Solver={selected_solver}")
+                        # Speed is already handled by callback, just save dimensions and solver
+                        return {"action": "save", "width": new_width, "height": new_height, "solver": selected_solver}
                     else:
                         print("Invalid dimensions. Width and Height must be positive.")
                         return None
