@@ -157,3 +157,11 @@ tmp/
 
 # Local settings override
 local_config.py
+
+# Script generated files
+# *.png  <- Removed this line as we want to commit example screenshots if any,
+# *.jpg     and the app generates screenshots into a 'screenshots/' subdir.
+# *.jpeg
+# *.gif
+screenshots/ # Add this if you want to ignore the output directory for screenshots by default.
+             # For this project, let's not ignore it so example screenshots can be committed.
